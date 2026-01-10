@@ -1,5 +1,5 @@
 # Kubernetes Agent v1.2 – Agentic AI with Local LLM (Ollama)
-# Author: Arunvel Arunachalam (Teaching + Production-grade PoC)
+# Author: Arunvel Arunachalam 
 # Purpose: Kubernetes troubleshooting using Rules + Local LLM + Safe Actions
 
 import sys
