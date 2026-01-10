@@ -1,4 +1,14 @@
 pip install kubernetes rich
 
+sudo apt update -y
+sudo apt install -y python3-full python3-venv
+
+
+python3 -m venv venv
+
+source venv/bin/activate
+
+
+
 
 python kubernetes_agent_v1.py default nginx-pod
