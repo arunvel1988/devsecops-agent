@@ -1,0 +1,4 @@
+pip install kubernetes rich
+
+
+python kubernetes_agent_v1.py default nginx-pod
