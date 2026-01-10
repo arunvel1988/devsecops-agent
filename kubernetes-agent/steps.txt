@@ -1,3 +1,4 @@
+###################
 pip install kubernetes rich
 
 sudo apt update -y
@@ -8,7 +9,17 @@ python3 -m venv venv
 
 source venv/bin/activate
 
+####################
 
+kubectl run nginx-pod \
+  --image=nginx \
+  --restart=Always \
+  --command -- /bin/sh -c "exit 1"
 
-
+#########
 python kubernetes_agent_v1.py default nginx-pod
+###################
+
+
+
+#########
