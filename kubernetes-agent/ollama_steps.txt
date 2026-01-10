@@ -1,0 +1,20 @@
+curl -fsSL https://ollama.com/install.sh | sh
+ollama --version
+
+
+ollama pull llama3.1:8b
+
+
+ollama run llama3.1:8b
+
+
+pip install kubernetes rich openai
+
+
+kubectl run nginx-pod \
+  --image=nginx \
+  --restart=Always \
+  --command -- /bin/sh -c "exit 1"
+
+
+python kubernetes_agent_v1.py default nginx-pod
