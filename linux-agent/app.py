@@ -81,7 +81,7 @@ HTML_TEMPLATE = """
     <style>
         body {
             font-family: 'Roboto', sans-serif;
-            background: linear-gradient(to right, #74ebd5, #ACB6E5);
+            background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
             margin: 0;
             padding: 0;
         }
@@ -91,100 +91,124 @@ HTML_TEMPLATE = """
         }
         h1 {
             text-align: center;
-            color: #2c3e50;
-            margin-bottom: 20px;
+            color: #34495e;
+            margin-bottom: 25px;
+            font-size: 3em;
+            text-shadow: 2px 2px 5px #7f8c8d;
         }
         .card {
-            background: rgba(255,255,255,0.95);
+            background: linear-gradient(145deg, #f9f9f9, #e0f7fa);
             padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            margin-bottom: 20px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            margin-bottom: 25px;
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: scale(1.02);
         }
         h2 {
-            color: #34495e;
-            margin-bottom: 10px;
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.8em;
         }
         .metric {
-            margin: 8px 0;
+            margin: 10px 0;
             font-size: 18px;
         }
         .bar-container {
-            background-color: #ddd;
+            background: #e0e0e0;
             border-radius: 25px;
             overflow: hidden;
-            margin: 5px 0 15px 0;
+            margin-bottom: 15px;
+            position: relative;
         }
         .bar {
-            height: 25px;
+            height: 30px;
+            line-height: 30px;
+            color: white;
+            font-weight: bold;
             text-align: right;
             padding-right: 10px;
-            line-height: 25px;
-            color: white;
-            font-weight: bold;
             border-radius: 25px;
+            transition: width 1s ease-in-out, box-shadow 0.5s ease-in-out;
         }
-        .cpu {background: #e74c3c;}
-        .memory {background: #f39c12;}
-        .disk {background: #27ae60;}
+        .cpu {background: linear-gradient(90deg, #FF6B6B, #FF4757);}
+        .memory {background: linear-gradient(90deg, #FFA502, #FF7F50);}
+        .disk {background: linear-gradient(90deg, #2ed573, #1eae63);}
+        /* sparkle animation */
+        .sparkle {
+            animation: sparkle 1s infinite;
+            box-shadow: 0 0 10px 3px #fff;
+        }
+        @keyframes sparkle {
+            0% { box-shadow: 0 0 10px 2px rgba(255,255,255,0.6); }
+            50% { box-shadow: 0 0 20px 6px rgba(255,255,255,1); }
+            100% { box-shadow: 0 0 10px 2px rgba(255,255,255,0.6); }
+        }
         pre {
-            background: #f0f0f0;
+            background: #fff9c4;
             padding: 15px;
-            border-radius: 10px;
+            border-radius: 15px;
             white-space: pre-wrap;
             font-size: 16px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         }
         .action-box input[type=password] {
-            padding: 10px;
-            width: 220px;
+            padding: 12px;
+            width: 250px;
             margin-right: 10px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
+            border-radius: 10px;
+            border: 2px solid #2c3e50;
         }
         .action-box button {
-            padding: 10px 20px;
-            background: #007bff;
+            padding: 12px 25px;
+            background: linear-gradient(90deg, #6a11cb, #2575fc);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 12px;
             cursor: pointer;
             font-weight: bold;
+            transition: 0.3s;
         }
         .action-box button:hover {
-            background: #0056b3;
+            background: linear-gradient(90deg, #2575fc, #6a11cb);
         }
         .status {
-            margin-top: 10px;
+            margin-top: 15px;
             font-weight: bold;
+            font-size: 1.2em;
         }
         .success {color: #27ae60;}
         .error {color: #c0392b;}
-        .icon {
-            font-size: 50px;
-            vertical-align: middle;
-            margin-right: 10px;
-        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🤖 AI Ops Linux Monitoring Dashboard</h1>
+        <h1>AI Ops Linux Monitoring</h1>
 
         <div class="card">
-            <h2>System Metrics</h2>
+            <h2>CPU Usage</h2>
+            <div class="metric">{{ metrics.cpu }}%</div>
+            <div class="bar-container">
+                <div class="bar cpu {% if metrics.cpu > 70 %}sparkle{% endif %}" style="width: {{ metrics.cpu }}%">{{ metrics.cpu }}%</div>
+            </div>
 
-            <div class="metric">CPU Usage: {{ metrics.cpu }}%</div>
-            <div class="bar-container"><div class="bar cpu" style="width: {{ metrics.cpu }}%">{{ metrics.cpu }}%</div></div>
+            <h2>Memory Usage</h2>
+            <div class="metric">{{ metrics.memory }}%</div>
+            <div class="bar-container">
+                <div class="bar memory {% if metrics.memory > 70 %}sparkle{% endif %}" style="width: {{ metrics.memory }}%">{{ metrics.memory }}%</div>
+            </div>
 
-            <div class="metric">Memory Usage: {{ metrics.memory }}%</div>
-            <div class="bar-container"><div class="bar memory" style="width: {{ metrics.memory }}%">{{ metrics.memory }}%</div></div>
-
-            <div class="metric">Disk Usage: {{ metrics.disk }}%</div>
-            <div class="bar-container"><div class="bar disk" style="width: {{ metrics.disk }}%">{{ metrics.disk }}%</div></div>
+            <h2>Disk Usage</h2>
+            <div class="metric">{{ metrics.disk }}%</div>
+            <div class="bar-container">
+                <div class="bar disk {% if metrics.disk > 70 %}sparkle{% endif %}" style="width: {{ metrics.disk }}%">{{ metrics.disk }}%</div>
+            </div>
         </div>
 
         <div class="card">
-            <h2>AI Explanation and Suggestion</h2>
+            <h2>AI Explanation & Suggestion</h2>
             <pre>{{ ai }}</pre>
         </div>
 
@@ -201,6 +225,7 @@ HTML_TEMPLATE = """
     </div>
 </body>
 </html>
+
 """
 
 @app.route("/")
