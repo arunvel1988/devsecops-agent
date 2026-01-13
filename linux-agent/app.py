@@ -46,7 +46,7 @@ Disk usage: {metrics['disk']}%
                 "prompt": prompt,
                 "stream": False
             },
-            timeout=15  # AI timeout
+            timeout=60  # AI timeout
         )
         return response.json().get("response", "No AI response")
     except Exception as e:
