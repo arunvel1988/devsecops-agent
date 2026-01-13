@@ -187,7 +187,7 @@ Disk: {{ metrics.disk }}%
 </div>
 
 <div class="card">
-<h2>⚙️ Approved Action Output</h2>
+<h2>Approved Action Output</h2>
 <pre>{{ action_output }}</pre>
 </div>
 
