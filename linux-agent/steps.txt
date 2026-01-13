@@ -1,0 +1,13 @@
+curl -fsSL https://ollama.com/install.sh | sh
+ollama --version
+
+
+ollama pull llama3.1:8b
+
+
+ollama run llama3.1:8b
+
+
+pip install kubernetes rich openai
+
+
