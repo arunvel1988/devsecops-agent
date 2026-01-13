@@ -18,11 +18,13 @@ last_action_status = ""
 
 # ------------------ SYSTEM METRICS ------------------
 def collect_metrics():
+    cpu_percents = psutil.cpu_percent(interval=1, percpu=True)
     return {
-        "cpu": psutil.cpu_percent(interval=1),
+        "cpu": sum(cpu_percents) / len(cpu_percents),  # average CPU usage
         "memory": psutil.virtual_memory().percent,
         "disk": psutil.disk_usage("/").percent
     }
+
 
 # ------------------ AI ANALYSIS ------------------
 def ask_ai(metrics):
