@@ -5,7 +5,7 @@ import threading
 import time
 from flask import Flask, render_template_string, request, redirect
 
-# ------------------ CONFIG ------------------
+# ---------------- CONFIG ----------------
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "llama3.1:8b"
 APPROVE_PASSWORD = "admin123"
@@ -17,50 +17,56 @@ latest_ai_response = ""
 last_action_status = ""
 last_action_output = ""
 
-# ------------------ SYSTEM METRICS ------------------
+# ---------------- SYSTEM METRICS ----------------
 def collect_metrics():
-    cpu_percents = psutil.cpu_percent(interval=1, percpu=True)
+    cpu = psutil.cpu_percent(interval=1)
+    memory = psutil.virtual_memory().percent
+    disk = psutil.disk_usage("/").percent
     return {
-        "cpu": round(sum(cpu_percents) / len(cpu_percents), 1),
-        "memory": round(psutil.virtual_memory().percent, 1),
-        "disk": round(psutil.disk_usage("/").percent, 1)
+        "cpu": round(cpu, 1),
+        "memory": round(memory, 1),
+        "disk": round(disk, 1)
     }
 
-# ------------------ AI ANALYSIS ------------------
+# ---------------- AI ANALYSIS ----------------
 def ask_ai(metrics):
     prompt = f"""
-You are a Linux system administrator.
+You are an AIOps assistant for Linux.
 
-Analyze the system health.
-Explain in simple words.
-If there is an issue, suggest ONE SAFE action from this list only:
-- check cpu load
-- check memory usage
-- check disk usage
-- no action needed
+RULES:
+- Keep the response SHORT.
+- Use bullet points.
+- End with exactly ONE action line.
+- Allowed actions:
+  ACTION: CHECK_CPU
+  ACTION: CHECK_MEMORY
+  ACTION: CHECK_DISK
+  ACTION: NONE
 
-Do NOT execute anything.
-Do NOT suggest dangerous actions.
+FORMAT STRICTLY LIKE THIS:
 
-CPU usage: {metrics['cpu']}%
-Memory usage: {metrics['memory']}%
-Disk usage: {metrics['disk']}%
+SUMMARY:
+- short point
+- short point
+
+ACTION: <ONE_ACTION_ONLY>
+
+SYSTEM METRICS:
+CPU: {metrics['cpu']}%
+MEMORY: {metrics['memory']}%
+DISK: {metrics['disk']}%
 """
     try:
         response = requests.post(
             OLLAMA_URL,
-            json={
-                "model": MODEL,
-                "prompt": prompt,
-                "stream": False
-            },
+            json={"model": MODEL, "prompt": prompt, "stream": False},
             timeout=60
         )
         return response.json().get("response", "No AI response")
     except Exception as e:
         return f"AI Error: {e}"
 
-# ------------------ BACKGROUND LOOPS ------------------
+# ---------------- BACKGROUND THREADS ----------------
 def monitor_loop():
     global latest_metrics
     while True:
@@ -74,93 +80,95 @@ def ai_loop():
             latest_ai_response = ask_ai(latest_metrics)
         time.sleep(5)
 
-# ------------------ AI → ACTION MAPPER ------------------
+# ---------------- AI → ACTION MAP ----------------
 def decide_action(ai_text):
-    text = ai_text.lower()
+    text = ai_text.upper()
 
-    if "check disk" in text:
-        return "Checking disk usage", ["df", "-h"]
+    if "ACTION: CHECK_DISK" in text:
+        return "Disk usage checked", ["df", "-h"]
 
-    if "check memory" in text:
-        return "Checking memory usage", ["free", "-h"]
+    if "ACTION: CHECK_MEMORY" in text:
+        return "Memory usage checked", ["free", "-h"]
 
-    if "check cpu" in text:
-        return "Checking CPU load", ["uptime"]
+    if "ACTION: CHECK_CPU" in text:
+        return "CPU load checked", ["uptime"]
 
-    return "No action required", None
+    return "No action required (system healthy)", None
 
-# ------------------ SAFE ACTION EXECUTION ------------------
+# ---------------- SAFE EXECUTION ----------------
 def execute_action():
     global last_action_output
 
-    action_name, command = decide_action(latest_ai_response)
+    message, command = decide_action(latest_ai_response)
 
     if not command:
-        last_action_output = "AI suggested no executable action."
+        last_action_output = message
         return
 
     try:
         result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=10
+            command, capture_output=True, text=True, timeout=10
         )
-        last_action_output = f"{action_name}\n\n{result.stdout}"
+        last_action_output = f"{message}\n\n{result.stdout}"
     except Exception as e:
-        last_action_output = f"Action failed: {e}"
+        last_action_output = f"Execution failed: {e}"
 
-# ------------------ FANCY UI ------------------
+# ---------------- UI ----------------
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AI Ops Linux Monitor</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Roboto', sans-serif;
-            background: linear-gradient(135deg, #FFDEE9, #B5FFFC);
-        }
-        .container { width: 1000px; margin: 20px auto; }
-        h1 { text-align: center; font-size: 3em; }
-        .card {
-            background: white;
-            padding: 25px;
-            border-radius: 20px;
-            margin-bottom: 25px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-        }
-        .bar-container { background: #ddd; border-radius: 25px; overflow: hidden; }
-        .bar {
-            height: 30px; color: white; font-weight: bold;
-            text-align: right; padding-right: 10px;
-            transition: width 1s;
-        }
-        .cpu { background: linear-gradient(90deg,#ff6b6b,#ff4757); }
-        .memory { background: linear-gradient(90deg,#ffa502,#ff7f50); }
-        .disk { background: linear-gradient(90deg,#2ed573,#1eae63); }
-        .sparkle { box-shadow: 0 0 15px 4px gold; }
-        pre {
-            background: #fff9c4;
-            padding: 15px;
-            border-radius: 15px;
-        }
-        button {
-            padding: 12px 25px;
-            border-radius: 12px;
-            border: none;
-            background: linear-gradient(90deg,#6a11cb,#2575fc);
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        input { padding: 12px; border-radius: 10px; }
-    </style>
+<title>AIOps Linux Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+<style>
+body {
+    font-family: Roboto;
+    background: linear-gradient(135deg,#FFDEE9,#B5FFFC);
+}
+.container { width: 1000px; margin: 20px auto; }
+.card {
+    background: white;
+    padding: 25px;
+    border-radius: 20px;
+    margin-bottom: 25px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+.bar-container { background: #ddd; border-radius: 25px; overflow: hidden; }
+.bar {
+    height: 30px; color: white; font-weight: bold;
+    text-align: right; padding-right: 10px;
+    transition: width 1s;
+}
+.cpu { background: linear-gradient(90deg,#ff6b6b,#ff4757); }
+.memory { background: linear-gradient(90deg,#ffa502,#ff7f50); }
+.disk { background: linear-gradient(90deg,#2ed573,#1eae63); }
+.sparkle { box-shadow: 0 0 15px gold; }
+
+pre {
+    background: #fff9c4;
+    padding: 15px;
+    border-radius: 15px;
+    height: 160px;
+    overflow-y: auto;
+    font-size: 15px;
+}
+
+button {
+    padding: 12px 25px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(90deg,#6a11cb,#2575fc);
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+input { padding: 12px; border-radius: 10px; }
+</style>
 </head>
+
 <body>
 <div class="container">
-<h1>AI Ops Linux Monitoring</h1>
+<h1 style="text-align:center;">AI Ops Linux Monitoring</h1>
 
 <div class="card">
 <h2>System Metrics</h2>
@@ -182,7 +190,7 @@ Disk: {{ metrics.disk }}%
 </div>
 
 <div class="card">
-<h2>AI Explanation & Suggestion</h2>
+<h2>AI Analysis</h2>
 <pre>{{ ai }}</pre>
 </div>
 
@@ -205,15 +213,15 @@ Disk: {{ metrics.disk }}%
 </html>
 """
 
-# ------------------ ROUTES ------------------
+# ---------------- ROUTES ----------------
 @app.route("/")
 def dashboard():
     return render_template_string(
         HTML_TEMPLATE,
         metrics=latest_metrics,
         ai=latest_ai_response,
-        status=last_action_status,
-        action_output=last_action_output
+        action_output=last_action_output,
+        status=last_action_status
     )
 
 @app.route("/approve", methods=["POST"])
@@ -222,13 +230,13 @@ def approve():
 
     if request.form.get("password") == APPROVE_PASSWORD:
         execute_action()
-        last_action_status = "Action approved and executed"
+        last_action_status = "Action processed"
     else:
-        last_action_status = "❌ Invalid password"
+        last_action_status = "Invalid password"
 
     return redirect("/")
 
-# ------------------ START ------------------
+# ---------------- START ----------------
 if __name__ == "__main__":
     threading.Thread(target=monitor_loop, daemon=True).start()
     threading.Thread(target=ai_loop, daemon=True).start()
