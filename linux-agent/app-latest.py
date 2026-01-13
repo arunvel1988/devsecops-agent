@@ -91,7 +91,7 @@ def decide_action(ai_text):
         return "Memory usage checked", ["free", "-h"]
 
     if "ACTION: CHECK_CPU" in text:
-        return "CPU load checked", ["uptime"]
+        return "CPU load checked", ["top"]
 
     return "No action required (system healthy)", None
 
