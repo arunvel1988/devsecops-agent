@@ -10,32 +10,20 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "llama3.1:8b"
 APPROVE_PASSWORD = "admin123"
 
-REFRESH_METRICS_SEC = 2
-REFRESH_AI_SEC = 5
-
-SAFE_COMMANDS = ["df", "free", "top", "ps", "uptime"]
-
 app = Flask(__name__)
 
 latest_metrics = {}
 latest_ai_response = ""
-latest_ai_command = "NONE"
-last_action_output = ""
 last_action_status = ""
+last_action_output = ""
 
 # ---------------- SYSTEM METRICS ----------------
 def collect_metrics():
     return {
         "cpu": round(psutil.cpu_percent(interval=1), 1),
         "memory": round(psutil.virtual_memory().percent, 1),
-        "disk": round(psutil.disk_usage("/").percent, 1),
+        "disk": round(psutil.disk_usage("/").percent, 1)
     }
-
-def monitor_loop():
-    global latest_metrics
-    while True:
-        latest_metrics = collect_metrics()
-        time.sleep(REFRESH_METRICS_SEC)
 
 # ---------------- AI ANALYSIS ----------------
 def ask_ai(metrics):
@@ -44,43 +32,42 @@ You are an AIOps assistant for Linux.
 
 GOAL:
 - Analyze system metrics
-- Suggest ONE useful diagnostic command
-- If system is healthy, suggest NONE
+- Suggest ONE safe Linux command (read-only)
+- If system is healthy say COMMAND: NONE
 
-STRICT RULES:
-- Max 2 bullet points
-- NO explanations
-- ONE command only
-- Allowed commands only:
+RULES:
+- Keep response SHORT
+- Use bullet points
+- Suggest ONLY ONE command
+- Allowed commands:
   df -h
   free -h
   top -b -n 1
   ps aux --sort=-%cpu | head
   uptime
 
-FORMAT (MANDATORY):
+FORMAT STRICTLY:
 
 SUMMARY:
 - short point
 - short point
 
-COMMAND:
-<exact command OR NONE>
+COMMAND: <exact command OR NONE>
 
 SYSTEM METRICS:
-CPU={metrics['cpu']}%
-MEMORY={metrics['memory']}%
-DISK={metrics['disk']}%
+CPU: {metrics['cpu']}%
+MEMORY: {metrics['memory']}%
+DISK: {metrics['disk']}%
 """
     try:
-        r = requests.post(
+        response = requests.post(
             OLLAMA_URL,
             json={"model": MODEL, "prompt": prompt, "stream": False},
             timeout=60
         )
-        return r.json().get("response", "")
+        return response.json().get("response", "No AI response")
     except Exception as e:
-        return f"SUMMARY:\n- AI error\n\nCOMMAND:\nNONE"
+        return f"AI Error: {e}"
 
 def extract_command(ai_text):
     for line in ai_text.splitlines():
@@ -88,43 +75,51 @@ def extract_command(ai_text):
             return line.replace("COMMAND:", "").strip()
     return "NONE"
 
+# ---------------- BACKGROUND THREADS ----------------
+def monitor_loop():
+    global latest_metrics
+    while True:
+        latest_metrics = collect_metrics()
+        time.sleep(2)
+
 def ai_loop():
-    global latest_ai_response, latest_ai_command
+    global latest_ai_response
     while True:
         if latest_metrics:
             latest_ai_response = ask_ai(latest_metrics)
-            latest_ai_command = extract_command(latest_ai_response)
-        time.sleep(REFRESH_AI_SEC)
+        time.sleep(5)
 
-# ---------------- SAFETY ----------------
-def is_command_safe(cmd):
-    if cmd == "NONE":
+# ---------------- SAFE EXECUTION ----------------
+SAFE_COMMANDS = ["df", "free", "top", "ps", "uptime"]
+
+def is_command_safe(command):
+    if command == "NONE":
         return False
-    base = cmd.split()[0]
+    base = command.split()[0]
     return base in SAFE_COMMANDS
 
 def execute_action():
     global last_action_output
 
-    cmd = latest_ai_command
+    command = extract_command(latest_ai_response)
 
-    if cmd == "NONE":
-        last_action_output = "No action required. System healthy."
+    if command == "NONE":
+        last_action_output = "No action required. System is healthy."
         return
 
-    if not is_command_safe(cmd):
-        last_action_output = "Blocked unsafe AI command."
+    if not is_command_safe(command):
+        last_action_output = "Blocked unsafe command suggested by AI."
         return
 
     try:
         result = subprocess.run(
-            cmd,
+            command,
             shell=True,
             capture_output=True,
             text=True,
             timeout=10
         )
-        last_action_output = f"$ {cmd}\n\n{result.stdout}"
+        last_action_output = f"$ {command}\n\n{result.stdout}"
     except Exception as e:
         last_action_output = f"Execution failed: {e}"
 
@@ -134,56 +129,93 @@ HTML_TEMPLATE = """
 <html>
 <head>
 <title>AIOps Linux Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 <style>
-body { font-family: Arial; background: #eef2f7; }
-.container { width: 1000px; margin: auto; }
+body {
+    font-family: Roboto;
+    background: linear-gradient(135deg,#FFDEE9,#B5FFFC);
+}
+.container { width: 1000px; margin: 20px auto; }
 .card {
     background: white;
-    padding: 20px;
-    border-radius: 12px;
-    margin: 20px 0;
+    padding: 25px;
+    border-radius: 20px;
+    margin-bottom: 25px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
 }
-pre {
-    background: #111;
-    color: #0f0;
-    padding: 15px;
-    border-radius: 10px;
-    height: 180px;
-    overflow-y: auto;
-}
-button {
-    padding: 10px 20px;
-    border-radius: 8px;
-    background: #2563eb;
+.bar-container { background: #ddd; border-radius: 25px; overflow: hidden; }
+.bar {
+    height: 30px;
     color: white;
-    border: none;
+    font-weight: bold;
+    text-align: right;
+    padding-right: 10px;
+    transition: width 1s;
 }
+.cpu { background: linear-gradient(90deg,#ff6b6b,#ff4757); }
+.memory { background: linear-gradient(90deg,#ffa502,#ff7f50); }
+.disk { background: linear-gradient(90deg,#2ed573,#1eae63); }
+.sparkle { box-shadow: 0 0 15px gold; }
+
+pre {
+    background: #0f172a;
+    color: #22c55e;
+    padding: 15px;
+    border-radius: 15px;
+    height: 220px;
+    overflow-y: auto;
+    font-size: 14px;
+    font-family: monospace;
+}
+
+button {
+    padding: 12px 25px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(90deg,#6a11cb,#2575fc);
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+input { padding: 12px; border-radius: 10px; }
 </style>
 </head>
 
 <body>
 <div class="container">
-<h1>AIOps Linux Monitoring</h1>
+<h1 style="text-align:center;">AI Ops Linux Monitoring</h1>
 
 <div class="card">
-<h3>System Metrics</h3>
-CPU: {{ metrics.cpu }}%<br>
-Memory: {{ metrics.memory }}%<br>
+<h2>System Metrics</h2>
+
+CPU: {{ metrics.cpu }}%
+<div class="bar-container">
+<div class="bar cpu {% if metrics.cpu > 70 %}sparkle{% endif %}" style="width:{{ metrics.cpu }}%">{{ metrics.cpu }}%</div>
+</div>
+
+Memory: {{ metrics.memory }}%
+<div class="bar-container">
+<div class="bar memory {% if metrics.memory > 70 %}sparkle{% endif %}" style="width:{{ metrics.memory }}%">{{ metrics.memory }}%</div>
+</div>
+
 Disk: {{ metrics.disk }}%
+<div class="bar-container">
+<div class="bar disk {% if metrics.disk > 70 %}sparkle{% endif %}" style="width:{{ metrics.disk }}%">{{ metrics.disk }}%</div>
+</div>
 </div>
 
 <div class="card">
-<h3>AI Recommendation</h3>
+<h2>AI Analysis</h2>
 <pre>{{ ai }}</pre>
 </div>
 
 <div class="card">
-<h3>Executed Output</h3>
-<pre>{{ output }}</pre>
+<h2>Approved Action Output</h2>
+<pre>{{ action_output }}</pre>
 </div>
 
 <div class="card">
-<h3>Approve AI Action</h3>
+<h2>Approve Action</h2>
 <form method="post" action="/approve">
 <input type="password" name="password" placeholder="Password" required>
 <button type="submit">Approve</button>
@@ -203,18 +235,20 @@ def dashboard():
         HTML_TEMPLATE,
         metrics=latest_metrics,
         ai=latest_ai_response,
-        output=last_action_output,
+        action_output=last_action_output,
         status=last_action_status
     )
 
 @app.route("/approve", methods=["POST"])
 def approve():
     global last_action_status
+
     if request.form.get("password") == APPROVE_PASSWORD:
         execute_action()
-        last_action_status = "Action approved & executed"
+        last_action_status = "Action executed"
     else:
         last_action_status = "Invalid password"
+
     return redirect("/")
 
 # ---------------- START ----------------
