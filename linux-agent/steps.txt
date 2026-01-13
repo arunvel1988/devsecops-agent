@@ -7,13 +7,24 @@ ollama pull llama3.1:8b
 
 ollama run llama3.1:8b
 
-pip install psutil requests rich flask
-
 
 http://localhost:11434
 
 
 curl http://localhost:11434/api/tags
+
+
+sudo apt update -y
+sudo apt install -y python3-venv python3-full
+sudo apt install -y python3-pip
+python3 -m venv aiops-venv
+source aiops-venv/bin/activate
+
+
+pip install psutil requests rich flask
+
+
+
 
 
 
