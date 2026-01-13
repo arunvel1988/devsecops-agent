@@ -10,75 +10,83 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "llama3.1:8b"
 APPROVE_PASSWORD = "admin123"
 
+REFRESH_METRICS_SEC = 2
+REFRESH_AI_SEC = 5
+
+SAFE_COMMANDS = ["df", "free", "top", "ps", "uptime"]
+
 app = Flask(__name__)
 
 latest_metrics = {}
 latest_ai_response = ""
-last_action_status = ""
+latest_ai_command = "NONE"
 last_action_output = ""
+last_action_status = ""
 
 # ---------------- SYSTEM METRICS ----------------
 def collect_metrics():
-    cpu = psutil.cpu_percent(interval=1)
-    memory = psutil.virtual_memory().percent
-    disk = psutil.disk_usage("/").percent
     return {
-        "cpu": round(cpu, 1),
-        "memory": round(memory, 1),
-        "disk": round(disk, 1)
+        "cpu": round(psutil.cpu_percent(interval=1), 1),
+        "memory": round(psutil.virtual_memory().percent, 1),
+        "disk": round(psutil.disk_usage("/").percent, 1),
     }
 
-# ---------------- AI ANALYSIS ----------------
+def monitor_loop():
+    global latest_metrics
+    while True:
+        latest_metrics = collect_metrics()
+        time.sleep(REFRESH_METRICS_SEC)
 
+# ---------------- AI ANALYSIS ----------------
 def ask_ai(metrics):
     prompt = f"""
-You are an AIOps assistant for Linux systems.
+You are an AIOps assistant for Linux.
 
 GOAL:
 - Analyze system metrics
-- Propose ONE safe Linux command (read-only)
-- If no action needed, say COMMAND: NONE
+- Suggest ONE useful diagnostic command
+- If system is healthy, suggest NONE
 
-RULES:
-- Keep it short
-- Use bullet points
-- Do NOT explain too much
-- Commands must be safe (df, free, top, ps, uptime)
+STRICT RULES:
+- Max 2 bullet points
+- NO explanations
+- ONE command only
+- Allowed commands only:
+  df -h
+  free -h
+  top -b -n 1
+  ps aux --sort=-%cpu | head
+  uptime
 
-FORMAT STRICTLY:
+FORMAT (MANDATORY):
 
 SUMMARY:
 - short point
 - short point
 
 COMMAND:
-<one linux command OR NONE>
+<exact command OR NONE>
 
 SYSTEM METRICS:
-CPU: {metrics['cpu']}%
-MEMORY: {metrics['memory']}%
-DISK: {metrics['disk']}%
+CPU={metrics['cpu']}%
+MEMORY={metrics['memory']}%
+DISK={metrics['disk']}%
 """
     try:
-        response = requests.post(
+        r = requests.post(
             OLLAMA_URL,
             json={"model": MODEL, "prompt": prompt, "stream": False},
             timeout=60
         )
-        return response.json().get("response", "No AI response")
+        return r.json().get("response", "")
     except Exception as e:
-        return f"AI Error: {e}"
-
+        return f"SUMMARY:\n- AI error\n\nCOMMAND:\nNONE"
 
 def extract_command(ai_text):
     for line in ai_text.splitlines():
-        if line.startswith("COMMAND:"):
+        if line.strip().startswith("COMMAND:"):
             return line.replace("COMMAND:", "").strip()
     return "NONE"
-
-
-latest_ai_command = "NONE"
-
 
 def ai_loop():
     global latest_ai_response, latest_ai_command
@@ -86,46 +94,39 @@ def ai_loop():
         if latest_metrics:
             latest_ai_response = ask_ai(latest_metrics)
             latest_ai_command = extract_command(latest_ai_response)
-        time.sleep(5)
+        time.sleep(REFRESH_AI_SEC)
 
-
-SAFE_COMMANDS = ["df", "free", "top", "ps", "uptime"]
-
-def is_command_safe(command):
-    if command == "NONE":
+# ---------------- SAFETY ----------------
+def is_command_safe(cmd):
+    if cmd == "NONE":
         return False
-    base = command.split()[0]
+    base = cmd.split()[0]
     return base in SAFE_COMMANDS
-
 
 def execute_action():
     global last_action_output
 
-    command = latest_ai_command
+    cmd = latest_ai_command
 
-    if command == "NONE":
-        last_action_output = "No action required. System is healthy."
+    if cmd == "NONE":
+        last_action_output = "No action required. System healthy."
         return
 
-    if not is_command_safe(command):
-        last_action_output = "Blocked unsafe command proposed by AI."
+    if not is_command_safe(cmd):
+        last_action_output = "Blocked unsafe AI command."
         return
 
     try:
         result = subprocess.run(
-            command,
+            cmd,
             shell=True,
             capture_output=True,
             text=True,
             timeout=10
         )
-        last_action_output = f"Executed command:\n{command}\n\n{result.stdout}"
+        last_action_output = f"$ {cmd}\n\n{result.stdout}"
     except Exception as e:
         last_action_output = f"Execution failed: {e}"
-
-
-
-
 
 # ---------------- UI ----------------
 HTML_TEMPLATE = """
@@ -133,88 +134,56 @@ HTML_TEMPLATE = """
 <html>
 <head>
 <title>AIOps Linux Monitor</title>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 <style>
-body {
-    font-family: Roboto;
-    background: linear-gradient(135deg,#FFDEE9,#B5FFFC);
-}
-.container { width: 1000px; margin: 20px auto; }
+body { font-family: Arial; background: #eef2f7; }
+.container { width: 1000px; margin: auto; }
 .card {
     background: white;
-    padding: 25px;
-    border-radius: 20px;
-    margin-bottom: 25px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-}
-.bar-container { background: #ddd; border-radius: 25px; overflow: hidden; }
-.bar {
-    height: 30px; color: white; font-weight: bold;
-    text-align: right; padding-right: 10px;
-    transition: width 1s;
-}
-.cpu { background: linear-gradient(90deg,#ff6b6b,#ff4757); }
-.memory { background: linear-gradient(90deg,#ffa502,#ff7f50); }
-.disk { background: linear-gradient(90deg,#2ed573,#1eae63); }
-.sparkle { box-shadow: 0 0 15px gold; }
-
-pre {
-    background: #fff9c4;
-    padding: 15px;
-    border-radius: 15px;
-    height: 160px;
-    overflow-y: auto;
-    font-size: 15px;
-}
-
-button {
-    padding: 12px 25px;
+    padding: 20px;
     border-radius: 12px;
-    border: none;
-    background: linear-gradient(90deg,#6a11cb,#2575fc);
-    color: white;
-    font-weight: bold;
-    cursor: pointer;
+    margin: 20px 0;
 }
-input { padding: 12px; border-radius: 10px; }
+pre {
+    background: #111;
+    color: #0f0;
+    padding: 15px;
+    border-radius: 10px;
+    height: 180px;
+    overflow-y: auto;
+}
+button {
+    padding: 10px 20px;
+    border-radius: 8px;
+    background: #2563eb;
+    color: white;
+    border: none;
+}
 </style>
 </head>
 
 <body>
 <div class="container">
-<h1 style="text-align:center;">AI Ops Linux Monitoring</h1>
+<h1>AIOps Linux Monitoring</h1>
 
 <div class="card">
-<h2>System Metrics</h2>
-
-CPU: {{ metrics.cpu }}%
-<div class="bar-container">
-<div class="bar cpu {% if metrics.cpu > 70 %}sparkle{% endif %}" style="width:{{ metrics.cpu }}%">{{ metrics.cpu }}%</div>
-</div>
-
-Memory: {{ metrics.memory }}%
-<div class="bar-container">
-<div class="bar memory {% if metrics.memory > 70 %}sparkle{% endif %}" style="width:{{ metrics.memory }}%">{{ metrics.memory }}%</div>
-</div>
-
+<h3>System Metrics</h3>
+CPU: {{ metrics.cpu }}%<br>
+Memory: {{ metrics.memory }}%<br>
 Disk: {{ metrics.disk }}%
-<div class="bar-container">
-<div class="bar disk {% if metrics.disk > 70 %}sparkle{% endif %}" style="width:{{ metrics.disk }}%">{{ metrics.disk }}%</div>
-</div>
 </div>
 
 <div class="card">
-<h2>AI Analysis</h2>
+<h3>AI Recommendation</h3>
 <pre>{{ ai }}</pre>
 </div>
 
 <div class="card">
-<h2>Approved Action Output</h2>
-<pre>{{ action_output }}</pre>
+<h3>Executed Output</h3>
+<pre>{{ output }}</pre>
 </div>
 
 <div class="card">
-<h2>Approve Action</h2>
+<h3>Approve AI Action</h3>
 <form method="post" action="/approve">
 <input type="password" name="password" placeholder="Password" required>
 <button type="submit">Approve</button>
@@ -234,20 +203,18 @@ def dashboard():
         HTML_TEMPLATE,
         metrics=latest_metrics,
         ai=latest_ai_response,
-        action_output=last_action_output,
+        output=last_action_output,
         status=last_action_status
     )
 
 @app.route("/approve", methods=["POST"])
 def approve():
     global last_action_status
-
     if request.form.get("password") == APPROVE_PASSWORD:
         execute_action()
-        last_action_status = "Action processed"
+        last_action_status = "Action approved & executed"
     else:
         last_action_status = "Invalid password"
-
     return redirect("/")
 
 # ---------------- START ----------------
