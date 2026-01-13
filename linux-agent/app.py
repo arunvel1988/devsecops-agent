@@ -77,31 +77,110 @@ HTML_TEMPLATE = """
 <html>
 <head>
     <title>AI Ops Linux Monitor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 0; }
-        .container { width: 900px; margin: 40px auto; }
-        .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        h1 { text-align: center; color: #2c3e50; }
-        h2 { color: #34495e; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
-        .metric { font-size: 18px; margin: 8px 0; }
-        pre { background: #f0f0f0; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
-        .action-box { margin-top: 15px; }
-        input[type=password] { padding: 8px; width: 200px; margin-right: 10px; }
-        button { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        .status { margin-top: 10px; color: #c0392b; }
-        .success { color: #27ae60; }
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: linear-gradient(to right, #74ebd5, #ACB6E5);
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            width: 1000px;
+            margin: 20px auto;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: rgba(255,255,255,0.95);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        h2 {
+            color: #34495e;
+            margin-bottom: 10px;
+        }
+        .metric {
+            margin: 8px 0;
+            font-size: 18px;
+        }
+        .bar-container {
+            background-color: #ddd;
+            border-radius: 25px;
+            overflow: hidden;
+            margin: 5px 0 15px 0;
+        }
+        .bar {
+            height: 25px;
+            text-align: right;
+            padding-right: 10px;
+            line-height: 25px;
+            color: white;
+            font-weight: bold;
+            border-radius: 25px;
+        }
+        .cpu {background: #e74c3c;}
+        .memory {background: #f39c12;}
+        .disk {background: #27ae60;}
+        pre {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 10px;
+            white-space: pre-wrap;
+            font-size: 16px;
+        }
+        .action-box input[type=password] {
+            padding: 10px;
+            width: 220px;
+            margin-right: 10px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+        }
+        .action-box button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .action-box button:hover {
+            background: #0056b3;
+        }
+        .status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .success {color: #27ae60;}
+        .error {color: #c0392b;}
+        .icon {
+            font-size: 50px;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>AI Ops Linux Monitoring Dashboard</h1>
+        <h1>🤖 AI Ops Linux Monitoring Dashboard</h1>
 
         <div class="card">
             <h2>System Metrics</h2>
+
             <div class="metric">CPU Usage: {{ metrics.cpu }}%</div>
+            <div class="bar-container"><div class="bar cpu" style="width: {{ metrics.cpu }}%">{{ metrics.cpu }}%</div></div>
+
             <div class="metric">Memory Usage: {{ metrics.memory }}%</div>
+            <div class="bar-container"><div class="bar memory" style="width: {{ metrics.memory }}%">{{ metrics.memory }}%</div></div>
+
             <div class="metric">Disk Usage: {{ metrics.disk }}%</div>
+            <div class="bar-container"><div class="bar disk" style="width: {{ metrics.disk }}%">{{ metrics.disk }}%</div></div>
         </div>
 
         <div class="card">
@@ -109,15 +188,14 @@ HTML_TEMPLATE = """
             <pre>{{ ai }}</pre>
         </div>
 
-        <div class="card">
+        <div class="card action-box">
             <h2>Approve Action</h2>
             <form method="post" action="/approve">
-                <input type="password" name="password" placeholder="Enter approval password" required>
+                <input type="password" name="password" placeholder="Enter password" required>
                 <button type="submit">Approve Action</button>
             </form>
-
             {% if status %}
-                <div class="status {{ 'success' if success else '' }}">{{ status }}</div>
+                <div class="status {{ 'success' if success else 'error' }}">{{ status }}</div>
             {% endif %}
         </div>
     </div>
