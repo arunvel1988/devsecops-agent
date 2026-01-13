@@ -7,7 +7,17 @@ ollama pull llama3.1:8b
 
 ollama run llama3.1:8b
 
+pip install psutil requests rich flask
 
-pip install kubernetes rich openai
+
+http://localhost:11434
+
+
+curl http://localhost:11434/api/tags
+
+
+
+
+
 
 
