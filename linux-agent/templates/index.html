@@ -1,101 +1,239 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>AI Ops Linux Monitoring Lab</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <style>
-        body {
-            background: linear-gradient(135deg, #0f172a, #020617);
-            font-family: "Roboto Mono", monospace;
-            color: #e5e7eb;
-        }
-        .container {
-            width: 1100px;
-            margin: auto;
-            padding-top: 30px;
-        }
-        .card {
-            background: #020617;
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 25px;
-            box-shadow: 0 0 20px rgba(59,130,246,0.25);
-        }
-        h1, h2 {
-            color: #38bdf8;
-        }
-        .metric {
-            margin-bottom: 12px;
-        }
-        .bar {
-            height: 24px;
-            border-radius: 12px;
-            background: linear-gradient(90deg, #2563eb, #38bdf8);
-        }
-        .warning { background: linear-gradient(90deg, #f59e0b, #f97316); }
-        .critical { background: linear-gradient(90deg, #dc2626, #ef4444); }
+<meta charset="UTF-8">
+<title>AIOps Linux Incident Console</title>
 
-        pre {
-            background: #020617;
-            border: 1px solid #1e293b;
-            padding: 15px;
-            border-radius: 12px;
-            color: #22c55e;
-            height: 260px;
-            overflow-y: auto;
-        }
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 
-        button {
-            background: linear-gradient(90deg, #2563eb, #38bdf8);
-            border: none;
-            padding: 12px 24px;
-            border-radius: 10px;
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        input {
-            padding: 12px;
-            border-radius: 10px;
-            border: none;
-        }
-    </style>
+<style>
+body {
+    font-family: Inter, sans-serif;
+    background: radial-gradient(circle at top, #0f172a, #020617);
+    color: #e5e7eb;
+    margin: 0;
+}
+
+header {
+    padding: 30px;
+    text-align: center;
+    background: linear-gradient(90deg, #020617, #020617);
+    border-bottom: 1px solid #1e293b;
+}
+
+header h1 {
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 30px auto;
+    padding: 20px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 25px;
+}
+
+.card {
+    background: linear-gradient(180deg, #020617, #020617);
+    border-radius: 18px;
+    padding: 25px;
+    border: 1px solid #1e293b;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.5);
+}
+
+.card h2 {
+    margin-top: 0;
+    font-size: 18px;
+    border-bottom: 1px solid #1e293b;
+    padding-bottom: 10px;
+}
+
+.metric {
+    margin-bottom: 18px;
+}
+
+.metric-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+
+.bar {
+    height: 10px;
+    border-radius: 8px;
+    background: #1e293b;
+    overflow: hidden;
+}
+
+.fill {
+    height: 100%;
+    border-radius: 8px;
+}
+
+.cpu { background: linear-gradient(90deg,#ef4444,#dc2626); }
+.mem { background: linear-gradient(90deg,#f59e0b,#d97706); }
+.disk { background: linear-gradient(90deg,#22c55e,#16a34a); }
+
+.severity {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    padding: 20px;
+    border-radius: 14px;
+}
+
+.INFO { background: #022c22; color: #22c55e; }
+.WARNING { background: #451a03; color: #f59e0b; }
+.MAJOR { background: #7c2d12; color: #fb7185; }
+.CRITICAL { background: #450a0a; color: #ef4444; }
+
+pre {
+    background: #020617;
+    padding: 18px;
+    border-radius: 14px;
+    overflow-y: auto;
+    max-height: 280px;
+    font-size: 14px;
+    border: 1px solid #1e293b;
+}
+
+.actions {
+    display: flex;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+button {
+    padding: 12px 20px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(90deg,#2563eb,#1d4ed8);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+button:hover {
+    opacity: 0.85;
+}
+
+input {
+    padding: 12px;
+    border-radius: 10px;
+    border: none;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.lab {
+    display: flex;
+    gap: 12px;
+    margin-top: 15px;
+}
+
+.lab a {
+    flex: 1;
+    text-align: center;
+    text-decoration: none;
+    padding: 12px;
+    border-radius: 12px;
+    background: linear-gradient(90deg,#7c3aed,#6d28d9);
+    color: white;
+    font-weight: 600;
+}
+</style>
 </head>
 
 <body>
+
+<header>
+    <h1>AIOps Linux Incident Console</h1>
+    <p>Observability • AI Reasoning • Human Approval • Safe Execution</p>
+</header>
+
 <div class="container">
-    <h1>AI Ops Linux Monitoring Lab</h1>
 
-    <div class="card">
-        <h2>System Metrics</h2>
-
-        <div class="metric">CPU Usage: {{ metrics.cpu }}%</div>
-        <div class="bar {% if metrics.cpu_state == 'WARNING' %}warning{% elif metrics.cpu_state == 'CRITICAL' %}critical{% endif %}"
-             style="width: {{ metrics.cpu }}%"></div>
-
-        <div class="metric">Load Average (1m): {{ metrics.load }} | CPU Cores: {{ metrics.cores }}</div>
-        <div class="metric">Memory Usage: {{ metrics.memory }}%</div>
-        <div class="metric">Disk Usage: {{ metrics.disk }}%</div>
+    <div class="severity {{ severity }}">
+        INCIDENT SEVERITY: {{ severity }}
     </div>
 
-    <div class="card">
-        <h2>AI Analysis</h2>
-        <pre>{{ ai }}</pre>
+    <div class="grid">
+
+        <!-- SYSTEM METRICS -->
+        <div class="card">
+            <h2>System Metrics</h2>
+
+            <div class="metric">
+                <div class="metric-label">
+                    <span>CPU Usage</span>
+                    <span>{{ metrics.cpu }}%</span>
+                </div>
+                <div class="bar">
+                    <div class="fill cpu" style="width:{{ metrics.cpu }}%"></div>
+                </div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">
+                    <span>Memory Usage</span>
+                    <span>{{ metrics.memory }}%</span>
+                </div>
+                <div class="bar">
+                    <div class="fill mem" style="width:{{ metrics.memory }}%"></div>
+                </div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">
+                    <span>Disk Usage</span>
+                    <span>{{ metrics.disk }}%</span>
+                </div>
+                <div class="bar">
+                    <div class="fill disk" style="width:{{ metrics.disk }}%"></div>
+                </div>
+            </div>
+
+            <p>Load Avg: {{ metrics.load }} | CPU Cores: {{ metrics.cores }}</p>
+        </div>
+
+        <!-- AI ANALYSIS -->
+        <div class="card">
+            <h2>AI Incident Analysis</h2>
+            <pre>{{ ai }}</pre>
+        </div>
+
+        <!-- EXECUTION -->
+        <div class="card">
+            <h2>Execution Control</h2>
+
+            <form method="post" action="/approve">
+                <input type="password" name="password" placeholder="Approval password" required>
+                <button type="submit">Approve Suggested Action</button>
+            </form>
+
+            <p>{{ status }}</p>
+
+            <pre>{{ output }}</pre>
+        </div>
     </div>
 
+    <!-- LAB MODE -->
     <div class="card">
-        <h2>Approved Command Output</h2>
-        <pre>{{ action_output }}</pre>
+        <h2>Fault Injection Lab</h2>
+        <div class="lab">
+            <a href="/inject/cpu">Inject CPU Load</a>
+            <a href="/inject/memory">Inject Memory Pressure</a>
+            <a href="/inject/disk">Inject Disk Usage</a>
+        </div>
     </div>
 
-    <div class="card">
-        <h2>Approve Suggested Action</h2>
-        <form method="post" action="/approve">
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">Approve</button>
-        </form>
-        <p>{{ status }}</p>
-    </div>
 </div>
+
 </body>
 </html>
