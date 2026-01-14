@@ -4,6 +4,7 @@ import subprocess
 import threading
 import time
 import os
+
 from flask import Flask, render_template, request, redirect
 
 # ---------------- CONFIG ----------------
@@ -18,81 +19,115 @@ latest_ai_response = ""
 last_action_status = ""
 last_action_output = ""
 
-# ---------------- SYSTEM METRICS ----------------
+# ---------------- METRICS COLLECTION ----------------
 def collect_metrics():
     load1, load5, load15 = os.getloadavg()
-    cpu_cores = psutil.cpu_count()
+    cores = psutil.cpu_count()
 
-    cpu_percent = psutil.cpu_percent(interval=1)
-    cpu_idle = 100 - cpu_percent
-
-    cpu_state = "OK"
-    if cpu_percent > 70 or load1 > cpu_cores:
-        cpu_state = "WARNING"
-    if cpu_percent > 85 and load1 > cpu_cores:
-        cpu_state = "CRITICAL"
+    cpu = psutil.cpu_percent(interval=1)
+    mem = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
 
     return {
-        "cpu": round(cpu_percent, 1),
-        "cpu_idle": round(cpu_idle, 1),
+        "cpu": round(cpu, 1),
         "load": round(load1, 2),
-        "cores": cpu_cores,
-        "cpu_state": cpu_state,
-        "memory": round(psutil.virtual_memory().percent, 1),
-        "disk": round(psutil.disk_usage("/").percent, 1)
+        "cores": cores,
+        "memory": round(mem.percent, 1),
+        "mem_available": round(mem.available / (1024 * 1024), 1),
+        "disk": round(disk.percent, 1),
     }
+
+# ---------------- INCIDENT SEVERITY ----------------
+def calculate_severity(m):
+    score = 0
+    if m["cpu"] > 85:
+        score += 3
+    if m["load"] > m["cores"]:
+        score += 2
+    if m["memory"] > 85:
+        score += 3
+    if m["disk"] > 90:
+        score += 3
+
+    if score >= 7:
+        return "CRITICAL"
+    if score >= 5:
+        return "MAJOR"
+    if score >= 3:
+        return "WARNING"
+    return "INFO"
+
+# ---------------- DECISION ENGINE ----------------
+def cpu_decision(m):
+    if m["load"] > m["cores"]:
+        return "uptime", "Load average exceeds CPU core count."
+    if m["cpu"] > 70:
+        return "ps aux --sort=-%cpu | head", "High CPU usage detected."
+    return None
+
+def memory_decision(m):
+    if m["memory"] > 85:
+        return "free -h", "Critical memory usage."
+    if m["memory"] > 75:
+        return "vmstat", "Memory pressure detected."
+    return None
+
+def disk_decision(m):
+    if m["disk"] > 90:
+        return "df -h", "Disk usage above safe threshold."
+    return None
+
+def decide_action(m):
+    for fn in [cpu_decision, memory_decision, disk_decision]:
+        result = fn(m)
+        if result:
+            return result
+    return "NONE", "System operating within normal limits."
 
 # ---------------- AI ANALYSIS ----------------
 def ask_ai(m):
+    command, reason = decide_action(m)
+    severity = calculate_severity(m)
+
     prompt = f"""
-You are a senior Linux SRE and AIOps assistant.
+You are a senior Linux Site Reliability Engineer.
 
-GOAL:
-- Determine whether CPU pressure exists
-- Explain findings clearly for students
-- Suggest ONE read-only diagnostic command if required
-- If system is healthy say COMMAND: NONE
+Explain the situation clearly for students.
 
-RULES:
-- Use evidence (CPU %, load average, core count)
-- Be concise and accurate
-- Suggest only one command
+SEVERITY: {severity}
 
-FORMAT STRICTLY:
+SYSTEM METRICS:
+- CPU Usage: {m['cpu']}%
+- Load Average: {m['load']}
+- CPU Cores: {m['cores']}
+- Memory Usage: {m['memory']}%
+- Available Memory: {m['mem_available']} MB
+- Disk Usage: {m['disk']}%
 
-SUMMARY:
-- ...
+DECISION:
+COMMAND: {command}
+REASON: {reason}
 
-EVIDENCE:
-- ...
-
-SUGGESTED ACTION:
-COMMAND: <exact command or NONE>
-REASON: <why>
-
-SYSTEM DATA:
-CPU Usage: {m['cpu']}%
-CPU Idle: {m['cpu_idle']}%
-Load Average (1m): {m['load']}
-CPU Cores: {m['cores']}
-Memory Usage: {m['memory']}%
-Disk Usage: {m['disk']}%
+Explain:
+- Why this is happening
+- What risk it poses
+- What the command helps observe
 """
 
     try:
-        response = requests.post(
+        r = requests.post(
             OLLAMA_URL,
             json={"model": MODEL, "prompt": prompt, "stream": False},
-            timeout=60
+            timeout=60,
         )
-        return response.json().get("response", "No AI response")
+        return r.json().get("response", "No AI response")
     except Exception as e:
-        return f"AI Error: {e}"
+        return f"AI error: {e}"
 
-def extract_command(ai_text):
-    for line in ai_text.splitlines():
+def extract_command(text):
+    for line in text.splitlines():
         if line.strip().startswith("COMMAND:"):
-            return line.replace("COMMAND:", "").strip()
+            return line.split("COMMAND:")[1].strip()
     return "NONE"
 
 # ---------------- BACKGROUND THREADS ----------------
@@ -116,33 +151,45 @@ READ_ONLY_ALLOWLIST = [
     "vmstat",
     "ps aux --sort=-%cpu | head",
     "free -h",
-    "df -h"
+    "df -h",
 ]
 
 def execute_action():
     global last_action_output
 
-    command = extract_command(latest_ai_response)
+    cmd = extract_command(latest_ai_response)
 
-    if command == "NONE":
-        last_action_output = "System is healthy. No action required."
+    if cmd == "NONE":
+        last_action_output = "No action required."
         return
 
-    if command not in READ_ONLY_ALLOWLIST:
-        last_action_output = "Blocked: command not in read-only allowlist."
+    if cmd not in READ_ONLY_ALLOWLIST:
+        last_action_output = "Blocked unsafe command."
         return
 
     try:
         result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=10
+            cmd, shell=True, capture_output=True, text=True, timeout=10
         )
-        last_action_output = f"$ {command}\n\n{result.stdout}"
+        last_action_output = f"$ {cmd}\n\n{result.stdout}"
     except Exception as e:
-        last_action_output = f"Execution failed: {e}"
+        last_action_output = str(e)
+
+# ---------------- FAULT INJECTION (LAB MODE) ----------------
+@app.route("/inject/cpu")
+def inject_cpu():
+    subprocess.Popen("yes > /dev/null", shell=True)
+    return redirect("/")
+
+@app.route("/inject/memory")
+def inject_memory():
+    subprocess.Popen("stress --vm 1 --vm-bytes 512M", shell=True)
+    return redirect("/")
+
+@app.route("/inject/disk")
+def inject_disk():
+    subprocess.Popen("dd if=/dev/zero of=/tmp/fill bs=1M count=1024", shell=True)
+    return redirect("/")
 
 # ---------------- ROUTES ----------------
 @app.route("/")
@@ -151,20 +198,19 @@ def dashboard():
         "index.html",
         metrics=latest_metrics,
         ai=latest_ai_response,
-        action_output=last_action_output,
-        status=last_action_status
+        output=last_action_output,
+        status=last_action_status,
+        severity=calculate_severity(latest_metrics) if latest_metrics else "N/A",
     )
 
 @app.route("/approve", methods=["POST"])
 def approve():
     global last_action_status
-
     if request.form.get("password") == APPROVE_PASSWORD:
         execute_action()
-        last_action_status = "Approved and executed safely."
+        last_action_status = "Approved and executed."
     else:
         last_action_status = "Invalid password."
-
     return redirect("/")
 
 # ---------------- START ----------------
