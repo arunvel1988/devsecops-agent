@@ -3,7 +3,8 @@ import requests
 import subprocess
 import threading
 import time
-from flask import Flask, render_template_string, request, redirect
+import os
+from flask import Flask, render_template, request, redirect
 
 # ---------------- CONFIG ----------------
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -19,46 +20,65 @@ last_action_output = ""
 
 # ---------------- SYSTEM METRICS ----------------
 def collect_metrics():
+    load1, load5, load15 = os.getloadavg()
+    cpu_cores = psutil.cpu_count()
+
+    cpu_percent = psutil.cpu_percent(interval=1)
+    cpu_idle = 100 - cpu_percent
+
+    cpu_state = "OK"
+    if cpu_percent > 70 or load1 > cpu_cores:
+        cpu_state = "WARNING"
+    if cpu_percent > 85 and load1 > cpu_cores:
+        cpu_state = "CRITICAL"
+
     return {
-        "cpu": round(psutil.cpu_percent(interval=1), 1),
+        "cpu": round(cpu_percent, 1),
+        "cpu_idle": round(cpu_idle, 1),
+        "load": round(load1, 2),
+        "cores": cpu_cores,
+        "cpu_state": cpu_state,
         "memory": round(psutil.virtual_memory().percent, 1),
         "disk": round(psutil.disk_usage("/").percent, 1)
     }
 
 # ---------------- AI ANALYSIS ----------------
-def ask_ai(metrics):
+def ask_ai(m):
     prompt = f"""
-You are an AIOps assistant for Linux.
+You are a senior Linux SRE and AIOps assistant.
 
 GOAL:
-- Analyze system metrics
-- Suggest ONE safe Linux command (read-only)
+- Determine whether CPU pressure exists
+- Explain findings clearly for students
+- Suggest ONE read-only diagnostic command if required
 - If system is healthy say COMMAND: NONE
 
 RULES:
-- Keep response SHORT
-- Use bullet points
-- Suggest ONLY ONE command
-- Allowed commands:
-  df -h
-  free -h
-  top -b -n 1
-  ps aux --sort=-%cpu | head
-  uptime
+- Use evidence (CPU %, load average, core count)
+- Be concise and accurate
+- Suggest only one command
 
 FORMAT STRICTLY:
 
 SUMMARY:
-- short point
-- short point
+- ...
 
-COMMAND: <exact command OR NONE>
+EVIDENCE:
+- ...
 
-SYSTEM METRICS:
-CPU: {metrics['cpu']}%
-MEMORY: {metrics['memory']}%
-DISK: {metrics['disk']}%
+SUGGESTED ACTION:
+COMMAND: <exact command or NONE>
+REASON: <why>
+
+SYSTEM DATA:
+CPU Usage: {m['cpu']}%
+CPU Idle: {m['cpu_idle']}%
+Load Average (1m): {m['load']}
+CPU Cores: {m['cores']}
+Memory Usage: {m['memory']}%
+Disk Usage: {m['disk']}%
 """
+
     try:
         response = requests.post(
             OLLAMA_URL,
@@ -80,23 +100,23 @@ def monitor_loop():
     global latest_metrics
     while True:
         latest_metrics = collect_metrics()
-        time.sleep(2)
+        time.sleep(3)
 
 def ai_loop():
     global latest_ai_response
     while True:
         if latest_metrics:
             latest_ai_response = ask_ai(latest_metrics)
-        time.sleep(5)
+        time.sleep(6)
 
 # ---------------- SAFE EXECUTION ----------------
-SAFE_COMMANDS = ["df", "free", "top", "ps", "uptime"]
-
-def is_command_safe(command):
-    if command == "NONE":
-        return False
-    base = command.split()[0]
-    return base in SAFE_COMMANDS
+READ_ONLY_ALLOWLIST = [
+    "uptime",
+    "top -b -n 1",
+    "ps aux --sort=-%cpu | head",
+    "free -h",
+    "df -h"
+]
 
 def execute_action():
     global last_action_output
@@ -104,11 +124,11 @@ def execute_action():
     command = extract_command(latest_ai_response)
 
     if command == "NONE":
-        last_action_output = "No action required. System is healthy."
+        last_action_output = "System is healthy. No action required."
         return
 
-    if not is_command_safe(command):
-        last_action_output = "Blocked unsafe command suggested by AI."
+    if command not in READ_ONLY_ALLOWLIST:
+        last_action_output = "Blocked: command not in read-only allowlist."
         return
 
     try:
@@ -123,116 +143,11 @@ def execute_action():
     except Exception as e:
         last_action_output = f"Execution failed: {e}"
 
-# ---------------- UI ----------------
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-<title>AIOps Linux Monitor</title>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-<style>
-body {
-    font-family: Roboto;
-    background: linear-gradient(135deg,#FFDEE9,#B5FFFC);
-}
-.container { width: 1000px; margin: 20px auto; }
-.card {
-    background: white;
-    padding: 25px;
-    border-radius: 20px;
-    margin-bottom: 25px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-}
-.bar-container { background: #ddd; border-radius: 25px; overflow: hidden; }
-.bar {
-    height: 30px;
-    color: white;
-    font-weight: bold;
-    text-align: right;
-    padding-right: 10px;
-    transition: width 1s;
-}
-.cpu { background: linear-gradient(90deg,#ff6b6b,#ff4757); }
-.memory { background: linear-gradient(90deg,#ffa502,#ff7f50); }
-.disk { background: linear-gradient(90deg,#2ed573,#1eae63); }
-.sparkle { box-shadow: 0 0 15px gold; }
-
-pre {
-    background: #0f172a;
-    color: #22c55e;
-    padding: 15px;
-    border-radius: 15px;
-    height: 220px;
-    overflow-y: auto;
-    font-size: 14px;
-    font-family: monospace;
-}
-
-button {
-    padding: 12px 25px;
-    border-radius: 12px;
-    border: none;
-    background: linear-gradient(90deg,#6a11cb,#2575fc);
-    color: white;
-    font-weight: bold;
-    cursor: pointer;
-}
-input { padding: 12px; border-radius: 10px; }
-</style>
-</head>
-
-<body>
-<div class="container">
-<h1 style="text-align:center;">AI Ops Linux Monitoring</h1>
-
-<div class="card">
-<h2>System Metrics</h2>
-
-CPU: {{ metrics.cpu }}%
-<div class="bar-container">
-<div class="bar cpu {% if metrics.cpu > 70 %}sparkle{% endif %}" style="width:{{ metrics.cpu }}%">{{ metrics.cpu }}%</div>
-</div>
-
-Memory: {{ metrics.memory }}%
-<div class="bar-container">
-<div class="bar memory {% if metrics.memory > 70 %}sparkle{% endif %}" style="width:{{ metrics.memory }}%">{{ metrics.memory }}%</div>
-</div>
-
-Disk: {{ metrics.disk }}%
-<div class="bar-container">
-<div class="bar disk {% if metrics.disk > 70 %}sparkle{% endif %}" style="width:{{ metrics.disk }}%">{{ metrics.disk }}%</div>
-</div>
-</div>
-
-<div class="card">
-<h2>AI Analysis</h2>
-<pre>{{ ai }}</pre>
-</div>
-
-<div class="card">
-<h2>Approved Action Output</h2>
-<pre>{{ action_output }}</pre>
-</div>
-
-<div class="card">
-<h2>Approve Action</h2>
-<form method="post" action="/approve">
-<input type="password" name="password" placeholder="Password" required>
-<button type="submit">Approve</button>
-</form>
-<p>{{ status }}</p>
-</div>
-
-</div>
-</body>
-</html>
-"""
-
 # ---------------- ROUTES ----------------
 @app.route("/")
 def dashboard():
-    return render_template_string(
-        HTML_TEMPLATE,
+    return render_template(
+        "index.html",
         metrics=latest_metrics,
         ai=latest_ai_response,
         action_output=last_action_output,
@@ -245,9 +160,9 @@ def approve():
 
     if request.form.get("password") == APPROVE_PASSWORD:
         execute_action()
-        last_action_status = "Action executed"
+        last_action_status = "Approved and executed safely."
     else:
-        last_action_status = "Invalid password"
+        last_action_status = "Invalid password."
 
     return redirect("/")
 
