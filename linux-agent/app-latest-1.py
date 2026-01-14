@@ -118,7 +118,7 @@ Explain:
         r = requests.post(
             OLLAMA_URL,
             json={"model": MODEL, "prompt": prompt, "stream": False},
-            timeout=60,
+            timeout=120,
         )
         return r.json().get("response", "No AI response")
     except Exception as e:
