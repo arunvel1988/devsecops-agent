@@ -112,7 +112,8 @@ def ai_loop():
 # ---------------- SAFE EXECUTION ----------------
 READ_ONLY_ALLOWLIST = [
     "uptime",
-    "top -b -n 1",
+    "top",
+    "vmstat",
     "ps aux --sort=-%cpu | head",
     "free -h",
     "df -h"
